@@ -1,0 +1,19 @@
+class manual() {
+update ->  This.
+}
+class base(Arg:manual) {
+update() ->
+    the_method(Arg).
+the_method(A) ->
+    Arg + A.
+}
+
+class linear(Arg:manual) extends base(Arg) {
+update() ->
+    base:the_method(Arg).
+}
+
+begin
+
+z:manual() = 2;
+a:linear(z) = 4;
