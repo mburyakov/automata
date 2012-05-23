@@ -53,9 +53,9 @@ validate_extension(Dependencies,BaseClass) ->
 
 print_method(ClassName,MethodName,MethodArgs,Method,Dependencies,ExtendsList) ->
     Valid = validate_method_signature(MethodName,MethodArgs),
-    PrMethod = process_tree({ClassName,Dependencies,ExtendsList},Method),
     if
         Valid ->
+            PrMethod = process_tree({ClassName,Dependencies,ExtendsList},Method),
             "\n'" ++ atom_to_list(calc_func_name(ClassName,MethodName)) ++ "'([This" ++ lists:map(fun(X)->","++atom_to_list(X) end,Dependencies) ++ "]" ++ lists:map(fun(X)->","++atom_to_list(X) end,MethodArgs) ++ ") ->\n    " ++ erl_pp:exprs(PrMethod) ++ ".\n";
         true ->
             error("Method "++atom_to_list(ClassName)++":"++atom_to_list(MethodName)++" seems to be not valid.")
@@ -78,7 +78,7 @@ process_tree(_Cl,{'integer',B,C}) -> {'integer',B,C};
 process_tree(Cl,{A,B,Ch1}) -> {A,B,process_tree(Cl,Ch1)};
 process_tree(Cl,{A,B,C,Ch1,Ch2}) -> {A,B,C,process_tree(Cl,Ch1),process_tree(Cl,Ch2)};
 
-process_tree({ClassName,Dep,Ext},{'call',B,{'atom',C,Name},Args}) ->
+process_tree({ClassName,Dep,_Ext},{'call',B,{'atom',C,Name},Args}) ->
     {'call',B,{'atom',C,calc_func_name(ClassName,Name)},element(2,erl_parse:parse_exprs([{'[',0}] ++ [{'var',0,'This'}] ++ lists:append(lists:map(fun(X) ->
                                                                                          [{',',0},{'var',0,X}]
                                                                                      end,
@@ -86,11 +86,13 @@ process_tree({ClassName,Dep,Ext},{'call',B,{'atom',C,Name},Args}) ->
 
 %TODO:arguments from base class dependencies, not from this class
 %TODO:if BaseClassName not found, interpret it as external module
-process_tree({ClassName,Dep,Ext},{'call',B,{'remote',C,{'atom',D,BaseClassName},{'atom',E,Name}},Args}) ->
+process_tree({ClassName,Dep,Ext},{'call',B,{'remote',_C,{'atom',_D,BaseClassName},{'atom',E,Name}},Args}) ->
+    [BaseClassExt] = lists:filter(fun({X,_}) -> X==BaseClassName end, Ext),
+    {_,BaseClassDep} = BaseClassExt,
     {'call',B,{'atom',E,calc_func_name(BaseClassName,Name)},element(2,erl_parse:parse_exprs([{'[',0}] ++ [{'var',0,'This'}] ++ lists:append(lists:map(fun(X) ->
                                                                                          [{',',0},{'var',0,X}]
                                                                                      end,
-                                                                                     Dep))++[{']',0},{'dot',0}]))++Args};
+                                                                                     BaseClassDep))++[{']',0},{'dot',0}]))++Args};
 
 process_tree(Cl,List) -> lists:map(fun(X)->process_tree(Cl,X) end, List).
 %TODO:process_tree(_Cl,Atom) -> Atom;

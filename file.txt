@@ -8,12 +8,14 @@ the_method(A) ->
     Arg + A.
 }
 
-class linear(Arg:manual) extends base(Arg) {
+class linear(Arg1:manual, Arg2:manual) extends base(Arg1), manual() {
 update() ->
-    base:the_method(Arg).
+    manual:update(),
+    base:the_method(Arg2).
 }
 
 begin
 
-z:manual() = 2;
-a:linear(z) = 4;
+x:manual() = 8;
+z:manual() = 3;
+a:linear(x,z) = 5;

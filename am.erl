@@ -1,15 +1,8 @@
 -module(am).
 -compile(export_all).
 
-init1() ->
-    ets:new(automatable,[named_table]).
-
 init2() ->
     ets:new(proctable,[named_table]).
-
-
-add1(Table,{Name,Type,State}) ->
-    ets:insert(Table,{Name,Type,State}).
 
 add2({Name,Type}) ->
     Pid = spawn(am,fsmServer,[Type,0]),
@@ -44,14 +37,7 @@ calcState({Type,Depends},State) ->
     outerl:UpdateFuncName([State|lists:map(fun(X)->get2(X) end, Depends)]).
     %%states:Type(State,Depends).
 
-add1(S) ->
-    add1(automatable,S).
-
 %set 1 automata, ignoring all dependencies
-strictSingleSet(Table,Name,State) ->
-    [[Type,_OldState]] = ets:match(Table,{Name,'$1','$2'}),
-    ets:insert(Table,{Name,Type,State}).
-
 strictSingleSet2(Name,State) ->
     [[Pid]] = ets:match(proctable,{Name,'$1'}),
     Pid ! {self(), {set, State}},
@@ -80,17 +66,10 @@ get2(Name) ->
         1000 -> erlang:error(timeout)
     end.
 
-
-
-main() ->
-    T = init1(),
-    {_Classes, Ams} = dsler:parseFile('file.txt','grammar'),
-    lists:foreach(fun(X) -> ?MODULE:add(T,X) end,Ams),
-    add1(T,{scb1,manual,1}),
-    add1(T,{scb2,manual,2}),
-    strictSingleSet(T,scb1,3),
-    Ans = ets:tab2list(T),
-    ets:delete(T),
+test() ->
+    update(a),
+    Ans = get2(a),
+    ets:delete(proctable),
     Ans.
 
 
@@ -102,7 +81,4 @@ main2() ->
     dsler:write_methods(Classes,OutFile),
     init2(),
     lists:foreach(fun(X) -> ?MODULE:addAndSet2(X) end,Ams),
-    update(a),
-    Ans = get2(a),
-    ets:delete(proctable),
-    Ans.
+    test().
