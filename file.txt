@@ -1,7 +1,9 @@
 class manual() {
+init() -> 0.
 update() ->  This.
 }
 class base(Arg:manual) {
+init() -> 0.
 update() ->
     the_method(Arg).
 the_method(A) ->
@@ -9,20 +11,24 @@ the_method(A) ->
 }
 
 class counter() {
-  update() -> This + 1.
+init() -> 0.
+update() -> This + 1.
 }
 
 class linear(Arg:manual) {
+init() -> 0.
 update() ->
   Arg-1.
 }
 
 class switch() {
+init() -> 0.
 update() ->
   This.
 }
 
 class double(Arg1:manual, Arg2:manual, Sw:switch) extends linear(Arg1) as lin1, linear(Arg2) {
+init() -> 0.
 update() ->
   if
     Sw   -> lin1:update();
@@ -31,11 +37,15 @@ update() ->
 }
 
 class next(Arg: double) {
+init() ->
+  undefined.
 update() ->
   Arg.
 }
 
 class cycle(Arg: cycle) {
+init() ->
+  30000.
 update() ->
   if 
     Arg == 0 ->
@@ -53,5 +63,5 @@ X:manual() -> 8.
 Z:manual() -> 3.
 S:switch() -> false.
 
-A:cycle(B) -> 10.
-B:cycle(A) -> 30.
+A:cycle(B) -> uninitialized.
+B:cycle(A) -> uninitialized.

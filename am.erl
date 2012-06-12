@@ -1,37 +1,77 @@
 -module(am).
 -compile(export_all).
 
-init2() ->
+init() ->
     ets:new(proctable,[named_table]).
 
-add2({Name,Type}) ->
-    Pid = spawn(?MODULE,fsmServer,[Type,unitialized,[]]),
+addAm({Name,Type}) ->
+    Pid = spawn(?MODULE,fsmServer,[Name, Type,'$uninitialized',[]]),
     ets:insert(proctable,{Name,Pid}).
 
-addAndSet2({Name,Type,State}) ->
-    add2({Name,Type}),
-    strictSingleSet2(Name,State).    
+addAndSetAm({Name,Type,State}) ->
+    addAm({Name,Type}),
+    strictSingleSetAm(Name,State).
+    
+initSpawn(Type, State) ->
+    io:format("initSpawn ~p\n",[Type]),
+    Parent = self(),
+    spawn(fun() ->
+              Parent ! {self(), {setinit, calcInitState(Type,State)}},
+              receive
+                  {am,Any} -> Any
+              after
+                  1000 -> error({timeout, thinkSpawn})
+              end
+          end).
+          
+updateSpawn(Type, State) ->
+    Parent = self(),
+    spawn(fun() ->
+              Parent ! {self(), {setupdate, calcUpdateState(Type,State)}},
+              receive
+                  {am,Any} -> Any
+              after
+                  1000 -> error({timeout, thinkSpawn})
+              end
+          end).          
 
-fsmServer(Type,State,Dependents) ->
+fsmServer(Name, Type, State,Dependents) ->
+    %io:format("created ~p (instance of ~p)\n",[self(),Type]),
     receive
-        {From,{set,NewState}} ->
-            From ! {am, ok},
-            fsmServer(Type,NewState, Dependents);
-        {From,{get}} ->
-            From ! {am, State},
-            fsmServer(Type,State, Dependents);
-        {From,{update}} ->
-            From ! {am, ok},
-            NewState = calcUpdateState(Type,State),
+        {From, {setupdate, NewState}} ->        
             if
-                NewState /= State ->
+                (NewState /= State) ->
                     notifyDep(Dependents);
                 true ->
                     ok
             end,
-            fsmServer(Type, NewState, Dependents);
-        {From, {register, DependentName}} ->
             From ! {am, ok},
+            fsmServer(Name, Type, NewState, Dependents);
+        {From, {setinit, NewState}} ->            
+            From ! {am, ok},
+            {'$initializing', Waiters} = State,
+            lists:map(fun(Client) -> Client ! {am, ok} end, Waiters),
+            fsmServer(Name, Type, NewState, Dependents);
+        {From, {get}} ->
+            From ! {am, State},
+            fsmServer(Name, Type, State, Dependents);
+        {From, {update}} ->            
+            updateSpawn(Type, State),
+            From ! {am, ok},
+            fsmServer(Name, Type, State, Dependents);
+        {From, {init}} ->           
+            io:format("init received"),
+            case State of
+                '$uninitialized' ->
+                    initSpawn(Type, State),
+                    fsmServer(Name, Type, {'$initializing', [From]}, Dependents);
+                {'$initializing', Waiters} ->
+                    fsmServer(Name, Type, {'$initializing', [From|Waiters]}, Dependents);
+                _ ->
+                    From ! {am, ok},
+                    fsmServer(Name, Type, State, Dependents)
+            end;            
+        {From, {register, DependentName}} ->
             Cond = lists:member(DependentName, Dependents),
             NewDependents = if
                 (not Cond) ->
@@ -39,31 +79,40 @@ fsmServer(Type,State,Dependents) ->
                 true ->
                     Dependents
             end,
-            fsmServer(Type, State, NewDependents);
+            From ! {am, ok},
+            fsmServer(Name, Type, State, NewDependents);
         {From, Anything} ->
-            From ! {am, {badarg,Anything}},
-            fsmServer(Type, State, Dependents);
+            From ! {am, {badarg, Anything}},
+            fsmServer(Name, Type, State, Dependents);
         _ ->
-            fsmServer(Type, State, Dependents)
+            fsmServer(Name, Type, State, Dependents)
     end.
 
 notifyDep(Dependents) ->
     lists:foreach(fun(Name) ->
-            update(Name)
-        end, Dependents).
+                      updateAm(Name)
+                  end, Dependents).
 
 calcUpdateState({Type,Depends},State) ->
     UpdateFuncName = dsler:calc_func_name(Type,'update'),
-    outerl:UpdateFuncName([State|lists:map(fun(X)->get2(X) end, Depends)]).
+    outerl:UpdateFuncName([State|lists:map(fun(X)->getAm(X) end, Depends)]).
+
+calcInitState({Type,Depends},State) ->
+    %lists:foreach(fun(Name) ->
+    %                  initAm(Name)
+    %              end, Depends),
+    InitFuncName = dsler:calc_func_name(Type,'init'),
+    io:format("InitFuncName = ~p (depends on ~p)\n", [InitFuncName,Depends]),
+    outerl:InitFuncName([State|lists:map(fun(X)->getAm(X) end, Depends)]).
 
 %set 1 automata, ignoring all dependencies
-strictSingleSet2(Name,State) ->
+strictSingleSetAm(Name,State) ->
     [[Pid]] = ets:match(proctable,{Name,'$1'}),
     Pid ! {self(), {set, State}},
     receive
         {am,Any} -> Any
     after
-        1000 -> error(timeout,strictSingleSet2)
+        1000 -> error({timeout,strictSingleSetAm})
     end.
 
 registerAm(Name, RegName) ->
@@ -72,7 +121,7 @@ registerAm(Name, RegName) ->
     receive
         {am,Any} -> Any
     after
-        1000 -> error(timeout,register)
+        1000 -> error({timeout,registerAm})
     end.
 
 registerMe(Name, {_Type, Depends}) ->
@@ -80,41 +129,59 @@ registerMe(Name, {_Type, Depends}) ->
                       registerAm(X, Name)
                   end, Depends).
 
-update(Name) ->
+updateAm(Name) ->
     [[Pid]] = ets:match(proctable,{Name,'$1'}),
     Pid ! {self(), {update}},
     receive
         {am,Any} -> Any
     after
-        1000 -> erlang:error(timeout)
+        1000 -> erlang:error({timeout,updateAm})
     end.
 
+initAm(Name) ->
+    [[Pid]] = ets:match(proctable,{Name,'$1'}),
+    Pid ! {self(), {init}},
+    receive
+        {am,Any} -> Any
+    after
+        1000 -> erlang:error({timeout,initAm})
+    end.
 
-get2(Name) ->
+getAm(Name) ->
+    io:format("asking ~p\n",[Name]),
     [[Pid]] = ets:match(proctable,{Name,'$1'}),
     Pid ! {self(), {get}},
     receive
         {am,Any} -> Any
     after
-        1000 -> erlang:error(timeout)
+        1000 -> erlang:error({timeout,getAm})
     end.
 
 test() ->
-    update('B'),
-    get2('A'),
-    timer:sleep(500),
-    get2('B').
+    %initAm('A'),
+    %initAm('B'),
+    %initAm('S'),
+    %timer:sleep(500),
+    updateAm('B'),
+    %getAm('A'),
+    timer:sleep(20000),
+    getAm('B').
 
-main2() ->
+main() ->
     InputFile = "file.txt",
     Grammar = grammar,
     OutFile = "outerl",
     {Classes, Ams} = dsler:parse_file(InputFile,Grammar),
     dsler:write_methods(Classes,OutFile),
-    init2(),
-    lists:foreach(fun({Name,Type,StateExpr}) -> addAndSet2({Name,Type,dsler:eval_expr(StateExpr)}) end,Ams),
+    init(),
+    lists:foreach(fun({Name,Type,_StateExpr}) -> addAm({Name,Type}) end,Ams),
+    lists:foreach(fun({Name,_Type,_StateExpr}) -> initAm(Name) end,Ams),
     lists:foreach(fun({Name,Type,_StateExpr}) -> registerMe(Name,Type) end,Ams),
     timer:sleep(500),
     Ans = test(),
+    Processes = ets:tab2list(proctable),
+    lists:foreach(fun({_Name, Pid}) ->
+                      exit(Pid,kill)
+                  end, Processes),
     ets:delete(proctable),
     Ans.

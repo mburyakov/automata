@@ -91,7 +91,7 @@ process_tree({ClassName,Dep,_Ext},{'call',B,{'atom',C,Name},Args}) ->
                                                                                      Dep))++[{']',0},{'dot',0}]))++Args};
 
 %TODO:if BaseClassName not found, interpret it as external module
-process_tree({ClassName,Dep,Ext},{'call',B,{'remote',_C,{'atom',_D,ParentName},{'atom',E,Name}},Args}) ->
+process_tree({_ClassName,_Dep,Ext},{'call',B,{'remote',_C,{'atom',_D,ParentName},{'atom',E,Name}},Args}) ->
     [ParentExt] = lists:filter(fun({_,_,X}) -> X==ParentName end, Ext),
     {BaseClassName,ParentDep,ParentName} = ParentExt,
     {'call',B,{'atom',E,calc_func_name(BaseClassName,Name)},element(2,erl_parse:parse_exprs([{'[',0}] ++ [{'var',0,'This'}] ++ lists:append(lists:map(fun(X) ->
