@@ -13,6 +13,7 @@ reserved_word(Word) ->
             'begin' -> true;
             'class' -> true;
             'extends' -> true;
+            'as' -> true;
             _ -> false
         end
     end. 
@@ -38,6 +39,10 @@ parse_file(File,Grammar) ->
             io:format([Message]),
             error("Parsing error")
     end.
+
+eval_expr(Expr) ->
+    {value,Ans,_Bindings} = erl_eval:exprs(Expr,[]),
+    Ans.
 
 validate_method_signature(Name,Args) ->
     case Name of
@@ -74,6 +79,7 @@ write_methods(ClassList,OutFile) ->
     code:load_file(list_to_atom(OutFile)).
 
 process_tree(_Cl,{'var',B,C}) -> {'var',B,C};
+process_tree(_Cl,{'atom',B,C}) -> {'atom',B,C};
 process_tree(_Cl,{'integer',B,C}) -> {'integer',B,C};
 process_tree(Cl,{A,B,Ch1}) -> {A,B,process_tree(Cl,Ch1)};
 process_tree(Cl,{A,B,C,Ch1,Ch2}) -> {A,B,C,process_tree(Cl,Ch1),process_tree(Cl,Ch2)};
@@ -84,15 +90,14 @@ process_tree({ClassName,Dep,_Ext},{'call',B,{'atom',C,Name},Args}) ->
                                                                                      end,
                                                                                      Dep))++[{']',0},{'dot',0}]))++Args};
 
-%TODO:arguments from base class dependencies, not from this class
 %TODO:if BaseClassName not found, interpret it as external module
-process_tree({ClassName,Dep,Ext},{'call',B,{'remote',_C,{'atom',_D,BaseClassName},{'atom',E,Name}},Args}) ->
-    [BaseClassExt] = lists:filter(fun({X,_}) -> X==BaseClassName end, Ext),
-    {_,BaseClassDep} = BaseClassExt,
+process_tree({ClassName,Dep,Ext},{'call',B,{'remote',_C,{'atom',_D,ParentName},{'atom',E,Name}},Args}) ->
+    [ParentExt] = lists:filter(fun({_,_,X}) -> X==ParentName end, Ext),
+    {BaseClassName,ParentDep,ParentName} = ParentExt,
     {'call',B,{'atom',E,calc_func_name(BaseClassName,Name)},element(2,erl_parse:parse_exprs([{'[',0}] ++ [{'var',0,'This'}] ++ lists:append(lists:map(fun(X) ->
                                                                                          [{',',0},{'var',0,X}]
                                                                                      end,
-                                                                                     BaseClassDep))++[{']',0},{'dot',0}]))++Args};
+                                                                                     ParentDep))++[{']',0},{'dot',0}]))++Args};
 
 process_tree(Cl,List) -> lists:map(fun(X)->process_tree(Cl,X) end, List).
 %TODO:process_tree(_Cl,Atom) -> Atom;

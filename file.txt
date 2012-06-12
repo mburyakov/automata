@@ -1,5 +1,5 @@
 class manual() {
-update ->  This.
+update() ->  This.
 }
 class base(Arg:manual) {
 update() ->
@@ -8,14 +8,50 @@ the_method(A) ->
     Arg + A.
 }
 
-class linear(Arg1:manual, Arg2:manual) extends base(Arg1), manual() {
+class counter() {
+  update() -> This + 1.
+}
+
+class linear(Arg:manual) {
 update() ->
-    manual:update(),
-    base:the_method(Arg2).
+  Arg-1.
+}
+
+class switch() {
+update() ->
+  This.
+}
+
+class double(Arg1:manual, Arg2:manual, Sw:switch) extends linear(Arg1) as lin1, linear(Arg2) {
+update() ->
+  if
+    Sw   -> lin1:update();
+    true -> linear:update()
+  end.
+}
+
+class next(Arg: double) {
+update() ->
+  Arg.
+}
+
+class cycle(Arg: cycle) {
+update() ->
+  if 
+    Arg == 0 ->
+      0;
+    true ->
+      Arg-1
+  end.
 }
 
 begin
 
-x:manual() = 8;
-z:manual() = 3;
-a:linear(x,z) = 5;
+%B:double(X,Z,S) -> 2.
+
+X:manual() -> 8.
+Z:manual() -> 3.
+S:switch() -> false.
+
+A:cycle(B) -> 10.
+B:cycle(A) -> 30.
