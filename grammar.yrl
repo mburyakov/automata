@@ -66,6 +66,7 @@ Token -> integer : '$1'.
 
 EL -> E                                         : ['$1'].
 EL -> E EL                                      : ['$1' | '$2'].
+E  -> Var ':' Type BrVarList dot                : { '$1', {'$3','$4'}, nothing}.
 E  -> Var ':' Type BrVarList '->' DotTokens     : { '$1', {'$3','$4'}, '$6'}.
 %E  -> Id ':' Type    '=' State ';'             : { '$1', {'$3', [] }, '$5'}.
 BrIdList -> '(' ')'                             : [].

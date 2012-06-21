@@ -10,7 +10,7 @@ addAm({Name,Type}) ->
 
 addAndSetAm({Name,Type,State}) ->
     addAm({Name,Type}),
-    strictSingleSetAm(Name,State).
+    setSilentAm(Name,State).
     
 initSpawn(Type, State) ->
     io:format("initSpawn ~p\n",[Type]),
@@ -25,6 +25,7 @@ initSpawn(Type, State) ->
           end).
           
 updateSpawn(Type, State) ->
+    io:format("updateSpawn ~p\n",[Type]),
     Parent = self(),
     spawn(fun() ->
               Parent ! {self(), {setupdate, calcUpdateState(Type,State)}},
@@ -33,18 +34,26 @@ updateSpawn(Type, State) ->
               after
                   1000 -> error({timeout, thinkSpawn})
               end
-          end).          
+          end).
+
+notifySpawn(Dependents) ->
+    spawn(fun() ->
+              notifyDep(Dependents)
+          end).
 
 fsmServer(Name, Type, State,Dependents) ->
-    %io:format("created ~p (instance of ~p)\n",[self(),Type]),
+    io:format("created ~p (instance of ~p) = ~p\n",[self(),Type, State]),
     receive
         {From, {setupdate, NewState}} ->        
+            From ! {am, ok},
             if
                 (NewState /= State) ->
-                    notifyDep(Dependents);
+                    notifySpawn(Dependents); %notifyDep(Dependents);
                 true ->
                     ok
             end,
+            fsmServer(Name, Type, NewState, Dependents);
+        {From, {setsilent, NewState}} ->        
             From ! {am, ok},
             fsmServer(Name, Type, NewState, Dependents);
         {From, {setinit, NewState}} ->            
@@ -56,11 +65,12 @@ fsmServer(Name, Type, State,Dependents) ->
             From ! {am, State},
             fsmServer(Name, Type, State, Dependents);
         {From, {update}} ->            
-            updateSpawn(Type, State),
+            io:format("update received\n"),
             From ! {am, ok},
+            updateSpawn(Type, State),
             fsmServer(Name, Type, State, Dependents);
         {From, {init}} ->           
-            io:format("init received"),
+            io:format("init received\n"),
             case State of
                 '$uninitialized' ->
                     initSpawn(Type, State),
@@ -106,9 +116,9 @@ calcInitState({Type,Depends},State) ->
     outerl:InitFuncName([State|lists:map(fun(X)->getAm(X) end, Depends)]).
 
 %set 1 automata, ignoring all dependencies
-strictSingleSetAm(Name,State) ->
+setSilentAm(Name,State) ->
     [[Pid]] = ets:match(proctable,{Name,'$1'}),
-    Pid ! {self(), {set, State}},
+    Pid ! {self(), {setsilent, State}},
     receive
         {am,Any} -> Any
     after
@@ -161,11 +171,16 @@ test() ->
     %initAm('A'),
     %initAm('B'),
     %initAm('S'),
-    %timer:sleep(500),
-    updateAm('B'),
-    %getAm('A'),
-    timer:sleep(20000),
-    getAm('B').
+    timer:sleep(5000),
+    updateAm('A'),
+    timer:sleep(5000),
+    getAm('A').
+    %getAm('B').
+
+load({Name,_Type,nothing}) ->
+    initAm(Name);
+load({Name,_Type,StateExpr}) ->
+    initAm(Name), setSilentAm(Name, dsler:eval_expr(StateExpr)).
 
 main() ->
     InputFile = "file.txt",
@@ -175,7 +190,7 @@ main() ->
     dsler:write_methods(Classes,OutFile),
     init(),
     lists:foreach(fun({Name,Type,_StateExpr}) -> addAm({Name,Type}) end,Ams),
-    lists:foreach(fun({Name,_Type,_StateExpr}) -> initAm(Name) end,Ams),
+    lists:foreach(fun(X) -> load(X) end, Ams),
     lists:foreach(fun({Name,Type,_StateExpr}) -> registerMe(Name,Type) end,Ams),
     timer:sleep(500),
     Ans = test(),

@@ -63,5 +63,5 @@ X:manual() -> 8.
 Z:manual() -> 3.
 S:switch() -> false.
 
-A:cycle(B) -> uninitialized.
-B:cycle(A) -> uninitialized.
+A:cycle(A).
+%B:cycle(A).
